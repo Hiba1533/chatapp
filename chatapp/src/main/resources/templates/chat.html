@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Simple Chat</title>
+
+    <link rel="stylesheet" href="/style.css">
+
+    <!-- SockJS -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+
+    <!-- STOMP -->
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+
+<body>
+
+<div class="chat-container">
+
+    <h1>Simple Chat</h1>
+
+    <div class="connection">
+        <span id="status">Disconnected</span>
+        <button id="connectBtn" onclick="connect()">Connect</button>
+    </div>
+
+    <div id="messages" class="messages">
+        <!-- Messages will appear here -->
+    </div>
+
+    <div class="input-area">
+
+        <input
+                type="text"
+                id="sender"
+                placeholder="Your name"
+        >
+
+        <input
+                type="text"
+                id="message"
+                placeholder="Type a message..."
+                onkeydown="handleEnter(event)"
+        >
+
+        <button onclick="sendMessage()">
+            Send
+        </button>
+
+    </div>
+
+</div>
+
+<script>
+
+    let stompClient = null;
+
+
+    // -----------------------------------------
+    // CONNECT TO SPRING BOOT WEBSOCKET
+    // -----------------------------------------
+
+    function connect() {
+
+        /*
+         * /chat is the endpoint from:
+         *
+         * registry.addEndpoint("/chat")
+         *                    .withSockJS();
+         */
+
+        const socket = new SockJS('/chat');
+
+        /*
+         * Create STOMP client over SockJS
+         */
+        stompClient = Stomp.over(socket);
+
+        /*
+         * Connect STOMP
+         */
+        stompClient.connect({}, function (frame) {
+
+            console.log("Connected: " + frame);
+
+            document.getElementById("status").innerText =
+                "Connected";
+
+            document.getElementById("status").classList.add("connected");
+
+            /*
+             * SUBSCRIBE
+             *
+             * Listen to:
+             * /topic/messages
+             */
+            stompClient.subscribe(
+                "/topic/messages",
+                function (message) {
+
+                    /*
+                     * message.body is JSON
+                     *
+                     * Example:
+                     * {
+                     *    "id": 1,
+                     *    "sender": "Ali",
+                     *    "content": "Hello"
+                     * }
+                     */
+
+                    const chatMessage =
+                        JSON.parse(message.body);
+
+                    showMessage(chatMessage);
+                }
+            );
+
+        }, function (error) {
+
+            console.error("Connection error:", error);
+
+            document.getElementById("status").innerText =
+                "Connection failed";
+        });
+    }
+
+
+    // -----------------------------------------
+    // SEND MESSAGE
+    // -----------------------------------------
+
+    function sendMessage() {
+
+        if (!stompClient) {
+            alert("Connect first!");
+            return;
+        }
+
+        const sender =
+            document.getElementById("sender").value.trim();
+
+        const content =
+            document.getElementById("message").value.trim();
+
+
+        if (sender === "" || content === "") {
+            alert("Enter your name and message.");
+            return;
+        }
+
+
+        /*
+         * Object matching your Java ChatMessage:
+         *
+         * private Long id;
+         * private String sender;
+         * private String content;
+         */
+
+        const chatMessage = {
+
+            id: null,
+
+            sender: sender,
+
+            content: content
+        };
+
+
+        /*
+         * SEND TO SPRING BOOT
+         *
+         * /app comes from:
+         *
+         * registry.setApplicationDestinationPrefixes("/app");
+         *
+         * /sendMessage comes from:
+         *
+         * @MessageMapping("/sendMessage")
+         */
+
+        stompClient.send(
+            "/app/sendMessage",
+            {},
+            JSON.stringify(chatMessage)
+        );
+
+
+        /*
+         * Clear message box
+         */
+        document.getElementById("message").value = "";
+    }
+
+
+    // -----------------------------------------
+    // DISPLAY MESSAGE
+    // -----------------------------------------
+
+    function showMessage(chatMessage) {
+
+        const messagesDiv =
+            document.getElementById("messages");
+
+
+        const messageDiv =
+            document.createElement("div");
+
+        messageDiv.classList.add("message");
+
+
+        const sender =
+            document.createElement("strong");
+
+        sender.innerText =
+            chatMessage.sender + ": ";
+
+
+        const content =
+            document.createElement("span");
+
+        content.innerText =
+            chatMessage.content;
+
+
+        messageDiv.appendChild(sender);
+
+        messageDiv.appendChild(content);
+
+
+        messagesDiv.appendChild(messageDiv);
+
+
+        /*
+         * Scroll to latest message
+         */
+        messagesDiv.scrollTop =
+            messagesDiv.scrollHeight;
+    }
+
+
+    // -----------------------------------------
+    // ENTER KEY
+    // -----------------------------------------
+
+    function handleEnter(event) {
+
+        if (event.key === "Enter") {
+            sendMessage();
+        }
+    }
+
+</script>
+
+</body>
+</html>
